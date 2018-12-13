@@ -125,7 +125,7 @@ function expandInput (scriptSig, witnessStack, type, scriptPubKey) {
 }
 
 // could be done in expandInput, but requires the original Transaction for hashForSignature
-function fixMultisigOrder (input, transaction, vin) {
+function fixMultisigOrder (input, transaction, vin, value, bch) {
   if (input.redeemScriptType !== SCRIPT_TYPES.MULTISIG || !input.redeemScript) return
   if (input.pubkeys.length === input.signatures.length) return
 
@@ -142,7 +142,12 @@ function fixMultisigOrder (input, transaction, vin) {
 
       // TODO: avoid O(n) hashForSignature
       const parsed = bscript.signature.decode(signature)
-      const hash = transaction.hashForSignature(vin, input.redeemScript, parsed.hashType)
+      let hash
+      if (bch) {
+        hash = transaction.hashForBchSignature(vin, input.signScript, value, parsed.hashType)
+      } else {
+        hash = transaction.hashForSignature(vin, input.redeemScript, parsed.hashType)
+      }
 
       // skip if signature does not match pubKey
       if (!keyPair.verify(hash, parsed.signature)) return false
@@ -437,7 +442,12 @@ function TransactionBuilder (network, maximumFeeRate) {
 
   this.__inputs = []
   this.__tx = new Transaction()
+  this.__bch = false
   this.__tx.version = 2
+}
+
+TransactionBuilder.prototype.enableBch = function (enable) {
+  this.__bch = enable
 }
 
 TransactionBuilder.prototype.setLockTime = function (locktime) {
@@ -462,8 +472,9 @@ TransactionBuilder.prototype.setVersion = function (version) {
   this.__tx.version = version
 }
 
-TransactionBuilder.fromTransaction = function (transaction, network) {
+TransactionBuilder.fromTransaction = function (transaction, network, bchTx) {
   const txb = new TransactionBuilder(network)
+  txb.enableBch(Boolean(bchTx))
 
   // Copy transaction fields
   txb.setVersion(transaction.version)
@@ -479,13 +490,14 @@ TransactionBuilder.fromTransaction = function (transaction, network) {
     txb.__addInputUnsafe(txIn.hash, txIn.index, {
       sequence: txIn.sequence,
       script: txIn.script,
-      witness: txIn.witness
+      witness: txIn.witness,
+      value: txIn.value
     })
   })
 
   // fix some things not possible through the public API
   txb.__inputs.forEach(function (input, i) {
-    fixMultisigOrder(input, transaction, i)
+    fixMultisigOrder(input, transaction, i, input.value, bchTx)
   })
 
   return txb
@@ -664,10 +676,14 @@ TransactionBuilder.prototype.sign = function (vin, keyPair, redeemScript, hashTy
 
   // ready to sign
   let signatureHash
-  if (input.hasWitness) {
-    signatureHash = this.__tx.hashForWitnessV0(vin, input.signScript, input.value, hashType)
+  if (this.__bch) {
+    signatureHash = this.__tx.hashForBchSignature(vin, input.signScript, witnessValue, hashType)
   } else {
-    signatureHash = this.__tx.hashForSignature(vin, input.signScript, hashType)
+    if (input.hasWitness) {
+      signatureHash = this.__tx.hashForWitnessV0(vin, input.signScript, input.value, hashType)
+    } else {
+      signatureHash = this.__tx.hashForSignature(vin, input.signScript, hashType)
+    }
   }
 
   // enforce in order signing of public keys
