@@ -1,6 +1,6 @@
 {
-  "name": "bitcoinjs-lib",
-  "version": "4.0.2",
+  "name": "@coinsquare/bitcoinjs-lib",
+  "version": "4.0.2-forkid",
   "description": "Client-side Bitcoin JavaScript library",
   "main": "./src/index.js",
   "engines": {
@@ -24,7 +24,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/bitcoinjs/bitcoinjs-lib.git"
+    "url": "https://github.com/coinsquare/bitcoinjs-lib.git"
   },
   "files": [
     "src"
