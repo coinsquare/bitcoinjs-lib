@@ -433,7 +433,7 @@ function build (type, input, allowIncomplete) {
   }
 }
 
-function TransactionBuilder (network, maximumFeeRate) {
+function TransactionBuilder (network, maximumFeeRate, version = 2) {
   this.__prevTxSet = {}
   this.network = network || networks.bitcoin
 
@@ -443,7 +443,7 @@ function TransactionBuilder (network, maximumFeeRate) {
   this.__inputs = []
   this.__tx = new Transaction()
   this.__forkId = false
-  this.__tx.version = 2
+  this.__tx.version = version
 }
 
 TransactionBuilder.prototype.useForkId = function (enable) {
