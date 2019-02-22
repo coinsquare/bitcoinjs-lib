@@ -6,6 +6,7 @@ const opcodes = require('bitcoin-ops')
 const typeforce = require('typeforce')
 const types = require('./types')
 const varuint = require('varuint-bitcoin')
+const BN = require('bn.js');
 
 function varSliceSize (someScript) {
   const length = someScript.length
@@ -177,13 +178,20 @@ Transaction.prototype.addInput = function (hash, index, sequence, scriptSig) {
 }
 
 Transaction.prototype.addOutput = function (scriptPubKey, value) {
-  typeforce(types.tuple(types.Buffer, types.Satoshi), arguments)
+  typeforce(types.tuple(types.Buffer, typeforce.anyOf(types.Satoshi, 'String')), arguments)
 
   // Add the output and return the output's index
-  return (this.outs.push({
-    script: scriptPubKey,
-    value: value
-  }) - 1)
+  if (typeof value === 'string') {
+    return (this.outs.push({
+      script: scriptPubKey,
+      valueBuffer: (new BN(value, 10)).toBuffer('le', 8)
+    }))
+  } else {
+    return (this.outs.push({
+      script: scriptPubKey,
+      value: value
+    }) - 1)
+  }
 }
 
 Transaction.prototype.hasWitnesses = function () {
@@ -237,7 +245,8 @@ Transaction.prototype.clone = function () {
   newTx.outs = this.outs.map(function (txOut) {
     return {
       script: txOut.script,
-      value: txOut.value
+      value: txOut.value,
+      valueBuffer: txOut.valueBuffer
     }
   })
 
