@@ -11,6 +11,8 @@ const networks_1 = require('./networks');
 const payments = require('./payments');
 const bscript = require('./script');
 const transaction_1 = require('./transaction');
+
+const BN = require('bn.js');
 /**
  * These are the default arguments for a Psbt instance.
  */
@@ -599,7 +601,7 @@ class PsbtTransaction {
       output.script === undefined ||
       output.value === undefined ||
       !Buffer.isBuffer(output.script) ||
-      typeof output.value !== 'number'
+      (typeof output.value !== 'number' && typeof output.value !== 'string')
     ) {
       throw new Error('Error adding output.');
     }
@@ -1197,8 +1199,16 @@ function addNonWitnessTxCache(cache, input, inputIndex) {
     },
   });
 }
+const BnFromLEBuffer = x =>
+  new BN(
+    Buffer.from(x)
+      .swap64()
+      .toString('hex'),
+    16,
+  );
 function inputFinalizeGetAmts(inputs, tx, cache, mustFinalize) {
-  let inputAmount = 0;
+  // let inputAmount = 0;
+  let inputAmount = new BN(0, 10);
   inputs.forEach((input, idx) => {
     if (mustFinalize && input.finalScriptSig)
       tx.ins[idx].script = input.finalScriptSig;
@@ -1208,23 +1218,40 @@ function inputFinalizeGetAmts(inputs, tx, cache, mustFinalize) {
       );
     }
     if (input.witnessUtxo) {
-      inputAmount += input.witnessUtxo.value;
+      // inputAmount += input.witnessUtxo.value;
+      inputAmount = inputAmount.add(new BN(input.witnessUtxo.value, 10));
     } else if (input.nonWitnessUtxo) {
       const nwTx = nonWitnessUtxoTxFromCache(cache, input, idx);
       const vout = tx.ins[idx].index;
       const out = nwTx.outs[vout];
-      inputAmount += out.value;
+      // inputAmount += out.value;
+      inputAmount = inputAmount.add(
+        out.valueBuffer
+          ? BnFromLEBuffer(out.valueBuffer)
+          : new BN(out.value, 10),
+      );
     }
   });
-  const outputAmount = tx.outs.reduce((total, o) => total + o.value, 0);
-  const fee = inputAmount - outputAmount;
-  if (fee < 0) {
+  // const outputAmount = tx.outs.reduce((total, o) => total + o.value, 0);
+  const outputAmount = tx.outs.reduce(
+    (total, o) =>
+      total.add(
+        o.valueBuffer ? BnFromLEBuffer(o.valueBuffer) : new BN(o.value, 10),
+      ),
+    new BN(0, 10),
+  );
+  // const fee = inputAmount - outputAmount;
+  const fee = inputAmount.sub(outputAmount);
+  // if (fee < 0) {
+  if (fee.isNeg()) {
     throw new Error('Outputs are spending more than Inputs');
   }
   const bytes = tx.virtualSize();
-  cache.__FEE = fee;
+  // cache.__FEE = fee;
+  cache.__FEE = fee.toString(10);
   cache.__EXTRACTED_TX = tx;
-  cache.__FEE_RATE = Math.floor(fee / bytes);
+  // cache.__FEE_RATE = Math.floor(fee / bytes);
+  cache.__FEE_RATE = fee.divRound(new BN(bytes, 10)).toString(10);
 }
 function nonWitnessUtxoTxFromCache(cache, input, inputIndex) {
   const c = cache.__NON_WITNESS_UTXO_TX_CACHE;
