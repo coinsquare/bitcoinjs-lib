@@ -105,9 +105,28 @@ class Transaction {
       });
     }
     const voutLen = readVarInt();
+    const BnFromLEBuffer = x =>
+      new BN(
+        Buffer.from(x)
+          .swap64()
+          .toString('hex'),
+        16,
+      );
     for (let i = 0; i < voutLen; ++i) {
+      // tx.outs.push({
+      //   value: readUInt64(),
+      //   script: readVarSlice(),
+      // });
+      const valueBuffer = readSlice(8); // mutate offset
+      const overflow = BnFromLEBuffer(valueBuffer).gt(
+        new BN(Number.MAX_SAFE_INTEGER, 10),
+      );
+      const value = overflow
+        ? valueBuffer
+        : bufferutils.readUInt64LE(valueBuffer, 0);
+
       tx.outs.push({
-        value: readUInt64(),
+        [`value${overflow ? 'Buffer' : ''}`]: value,
         script: readVarSlice(),
       });
     }
@@ -232,6 +251,7 @@ class Transaction {
       return {
         script: txOut.script,
         value: txOut.value,
+        valueBuffer: txOut.valueBuffer,
       };
     });
     return newTx;
